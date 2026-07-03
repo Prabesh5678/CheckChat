@@ -70,28 +70,28 @@ export class GameManager {
         game.sendChat(socket, message.message);
       }
 
-      if (message.type === "voice_request") {
+      if (message.type === "voice_request") {//done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleVoiceRequest(socket);
       }
-      if(message.type === "voice_response") {
+      if(message.type === "voice_response") {//done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleVoiceResponse(socket, message.data);
       }
-      if(message.type === "video_request") {
+      if(message.type === "video_request") {//done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleVideoRequest(socket);
       }
-      if(message.type === "video_response") {
+      if(message.type === "video_response") {//done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
@@ -103,14 +103,14 @@ export class GameManager {
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
-        game.handleRTCOffer(socket, message.data);
+        game.handleRTCOffer(socket, message);
       }
       if(message.type === "rtc_answer") {
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
-        game.handleRTCAnswer(socket, message.data);
+        game.handleRTCAnswer(socket, message);
       }
       if(message.type === "mic_toggle") {
         const game = this.games.find(
@@ -124,6 +124,21 @@ export class GameManager {
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
+        game.handleCameraToggle(socket, message.data);
+      }
+      if (message.type === "rtc_ice") {
+        const game = this.findGame(socket);
+        if (!game) return;
+        game.handleRtcIce(socket, message);
+      }
+      if(message.type==="mic_toggle") {
+        const game = this.findGame(socket);
+        if(!game) return;
+        game.handleMicToggle(socket, message.data);
+      }
+      if(message.type==="camera_toggle") {
+        const game = this.findGame(socket);
+        if(!game) return;
         game.handleCameraToggle(socket, message.data);
       }
       

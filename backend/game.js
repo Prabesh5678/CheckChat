@@ -10,9 +10,19 @@ export class Game {
     this.ended = false;
     this.player1.send(JSON.stringify({ type: "game_start", color: "white" }));
     this.player2.send(JSON.stringify({ type: "game_start", color: "black" }));
-    this.voiceAvailable = false;
-    this.videoAvailable = false;
+    this.rtc = {
+      pendingVoiceRequest : false,
+      pendingVideoRequest : false,
+      voiceAvailable : false,
+      videoAvailable : false,
+      player1Voice : false,
+      player2Voice : false,
+      player1Video : false,
+      player2Video : false
+    };
   }
+ 
+  
 
   notifyOpponentLeft(disconnectedSocket) {
     if (this.ended) return;
@@ -82,35 +92,119 @@ export class Game {
 
   handleVoiceRequest(socket) {
     if (this.ended) return;
-
+    this.rtc.pendingVoiceRequest = true;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
       opponent.send(JSON.stringify({ type: "voice_request" }));
     } catch {
-      /* opponent already gone */
+      return;
     }
   }
-   
+
   handleVoiceResponse(socket, data) {
-    if (this.ended) return;
+    if (this.ended||this.rtc.pendingVoiceRequest === false) return;
     if (!data || !data.accepted) return;
     this.voiceAvailable = data.accepted;
+    try {
+      const opponent = socket === this.player1 ? this.player2 : this.player1;
+      opponent.send(
+        JSON.stringify({ type: "voice_response", accepted: data.accepted }),
+      );
+    } catch {}
   }
 
   handleVideoRequest(socket) {
-    if (this.ended) return; 
+    if (this.ended) return;
+    this.rtc.pendingVideoRequest = true;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
       opponent.send(JSON.stringify({ type: "video_request" }));
     } catch {
-      /* opponent already gone */
+      return;
     }
   }
-  
+
   handleVideoResponse(socket, data) {
-    if (this.ended) return;
-    if (!data || !data.accepted) return;    
+    if (this.ended || this.rtc.pendingVideoRequest === false) return;
+    if (!data || !data.accepted) return;
     this.videoAvailable = data.accepted;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(
+        JSON.stringify({ type: "video_response", accepted: data.accepted }),
+      );
+    } catch {
+      return;
+    }
   }
 
+  handleRTCOffer(socket, message) {
+    if (this.ended) return;
+    if (!this.rtc.voiceAvailable && !this.rtc.videoAvailable) return;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(JSON.stringify({ type: "rtc_offer", offer: message.spd }));
+    } catch {
+      return;
+    }
+  }
+
+  handleRTCAnswer(socket, message) {
+    if (this.ended) return;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(JSON.stringify({ type: "rtc_answer", answer: message.sdp }));
+    } catch {
+      return;
+    }
+  }
+
+  handleRtcIce(socket, message) {
+    if (this.ended) return;
+    if (!this.rtc.voiceAvailable && !this.rtc.videoAvailable) return;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(JSON.stringify({ type: "rtc_ice", candidate: message.candidate }));
+    } catch {
+      return;
+    }
+  }
+
+  handleMicToggle(socket, data) {
+    if (this.ended) return;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(JSON.stringify({ type: "mic_toggle", enabled: data.enabled }));
+    } catch {
+      return;
+    }
+    if(this.rtc.voiceAvailable) {
+      if(socket === this.player1) {
+        this.rtc.player1Voice = data.enabled;
+      } 
+      else if(socket === this.player2)
+       {
+        this.rtc.player2Voice = data.enabled;
+      }
+    }
+  }
+
+  handleCameraToggle(socket, data) {
+    if (this.ended) return;
+    const opponent = socket === this.player1 ? this.player2 : this.player1;
+    try {
+      opponent.send(JSON.stringify({ type: "camera_toggle", enabled: data.enabled }));
+    } catch {
+      return;
+    }
+    if(this.rtc.videoAvailable) {
+      if(socket === this.player1) {
+        this.rtc.player1Video = data.enabled;
+      } 
+      else if(socket === this.player2)
+       {
+        this.rtc.player2Video = data.enabled;
+      }
+    }
+  }
 }
