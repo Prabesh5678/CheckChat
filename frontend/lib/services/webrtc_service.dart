@@ -38,6 +38,7 @@ class WebRTCService extends ChangeNotifier {
   bool _hasVideoTrack = false;
   bool _micEnabled = true;
   bool _cameraEnabled = true;
+  bool _speakerEnabled = true;
 
   // ICE candidates that arrive before we have a remote description yet
   // (e.g. opponent's candidates trickling in before our answer is set).
@@ -48,6 +49,7 @@ class WebRTCService extends ChangeNotifier {
   bool get hasVideoTrack => _hasVideoTrack;
   bool get micEnabled => _micEnabled;
   bool get cameraEnabled => _cameraEnabled;
+  bool get speakerEnabled => _speakerEnabled;
   MediaStream? get localStream => _localStream;
   MediaStream? get remoteStream => _remoteStream;
 
@@ -90,6 +92,7 @@ class WebRTCService extends ChangeNotifier {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
         remoteRenderer.srcObject = _remoteStream;
+        _applySpeakerState();
         notifyListeners();
       }
     };
@@ -246,6 +249,20 @@ class WebRTCService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Local-only: mute/unmute the received audio track without affecting the
+  /// remote peer.
+  void setSpeakerEnabled(bool enabled) {
+    _speakerEnabled = enabled;
+    _applySpeakerState();
+    notifyListeners();
+  }
+
+  void _applySpeakerState() {
+    for (final track in _remoteStream?.getAudioTracks() ?? const []) {
+      track.enabled = _speakerEnabled;
+    }
+  }
+
   /// Reflects the opponent's remote video track enabled/disabled state
   /// locally (e.g. to show an avatar placeholder instead of a frozen frame
   /// when they turn their camera off). Purely cosmetic — flutter_webrtc
@@ -285,6 +302,7 @@ class WebRTCService extends ChangeNotifier {
     _hasVideoTrack = false;
     _micEnabled = true;
     _cameraEnabled = true;
+    _speakerEnabled = true;
     _pendingRemoteCandidates.clear();
     _remoteDescriptionSet = false;
 

@@ -380,6 +380,7 @@ class GameService extends ChangeNotifier {
 
   void toggleSpeaker() {
     _speakerOn = !_speakerOn;
+    webrtcService.setSpeakerEnabled(_speakerOn);
     // Helper.setSpeakerphoneOn is a mobile-only audio routing API; on web
     // the browser/OS handles output routing itself.
     if (!kIsWeb) {

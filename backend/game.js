@@ -11,18 +11,16 @@ export class Game {
     this.player1.send(JSON.stringify({ type: "game_start", color: "white" }));
     this.player2.send(JSON.stringify({ type: "game_start", color: "black" }));
     this.rtc = {
-      pendingVoiceRequest : false,
-      pendingVideoRequest : false,
-      voiceAvailable : false,
-      videoAvailable : false,
-      player1Voice : false,
-      player2Voice : false,
-      player1Video : false,
-      player2Video : false
+      pendingVoiceRequest: false,
+      pendingVideoRequest: false,
+      voiceAvailable: false,
+      videoAvailable: false,
+      player1Voice: false,
+      player2Voice: false,
+      player1Video: false,
+      player2Video: false,
     };
   }
- 
-  
 
   notifyOpponentLeft(disconnectedSocket) {
     if (this.ended) return;
@@ -96,21 +94,33 @@ export class Game {
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
       opponent.send(JSON.stringify({ type: "voice_request" }));
+      console.log("Voice request sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
   }
 
   handleVoiceResponse(socket, data) {
-    if (this.ended||this.rtc.pendingVoiceRequest === false) return;
-    if (!data || !data.accepted) return;
-    this.voiceAvailable = data.accepted;
+    if (this.ended || this.rtc.pendingVoiceRequest === false) return;
+    console.log("Voice response received:", data);
+    if (!data) {
+      console.error("Invalid voice response data");
+      return;
+    }
+
+    this.rtc.voiceAvailable = data.accepted;
     try {
       const opponent = socket === this.player1 ? this.player2 : this.player1;
       opponent.send(
         JSON.stringify({ type: "voice_response", accepted: data.accepted }),
       );
-    } catch {}
+      console.log("Voice response sent to opponent");
+    } catch {
+      console.error("opponent socket is closed or not available");
+      console.log("Failed to send voice response to opponent");
+      return;
+    }
   }
 
   handleVideoRequest(socket) {
@@ -119,22 +129,42 @@ export class Game {
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
       opponent.send(JSON.stringify({ type: "video_request" }));
+      console.log("Video request sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
+      console.log("Failed to send video request to opponent");
       return;
     }
   }
 
   handleVideoResponse(socket, data) {
-    if (this.ended || this.rtc.pendingVideoRequest === false) return;
-    if (!data || !data.accepted) return;
-    this.videoAvailable = data.accepted;
+    if (this.ended || this.rtc.pendingVideoRequest === false) {
+      console.log(
+        "Video response received but game ended or no pending request",
+      );
+      return;
+    }
+    console.log("Video response received:", data);
+    // Expect `{ accepted: true|false }` — accept both answers and declines.
+    if (!data) {
+      console.error("Invalid video response data");
+      // Clear pending flag to avoid leaving the game in a waiting state.
+      this.rtc.pendingVideoRequest = false;
+      return;
+    }
+
+    // Update rtc state and clear pending flag.
+    this.rtc.videoAvailable = data.accepted;
+    this.rtc.pendingVideoRequest = false;
+
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
       opponent.send(
         JSON.stringify({ type: "video_response", accepted: data.accepted }),
       );
+      console.log("Video response sent to opponent");
     } catch {
-      return;
+      console.error("opponent socket is closed or not available");
     }
   }
 
@@ -143,8 +173,10 @@ export class Game {
     if (!this.rtc.voiceAvailable && !this.rtc.videoAvailable) return;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
-      opponent.send(JSON.stringify({ type: "rtc_offer", offer: message.spd }));
+      opponent.send(JSON.stringify({ type: "rtc_offer", sdp: message.sdp }));
+      console.log("RTC offer sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
   }
@@ -153,8 +185,10 @@ export class Game {
     if (this.ended) return;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
-      opponent.send(JSON.stringify({ type: "rtc_answer", answer: message.sdp }));
+      opponent.send(JSON.stringify({ type: "rtc_answer", sdp: message.sdp }));
+      console.log("RTC answer sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
   }
@@ -164,8 +198,12 @@ export class Game {
     if (!this.rtc.voiceAvailable && !this.rtc.videoAvailable) return;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
-      opponent.send(JSON.stringify({ type: "rtc_ice", candidate: message.candidate }));
+      opponent.send(
+        JSON.stringify({ type: "rtc_ice", candidate: message.candidate }),
+      );
+      console.log("RTC ice sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
   }
@@ -174,35 +212,42 @@ export class Game {
     if (this.ended) return;
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     try {
-      opponent.send(JSON.stringify({ type: "mic_toggle", enabled: data.enabled }));
+      opponent.send(
+        JSON.stringify({ type: "mic_toggle", enabled: data.enabled }),
+      );
+      console.log("Mic toggle sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
-    if(this.rtc.voiceAvailable) {
-      if(socket === this.player1) {
+    if (this.rtc.voiceAvailable) {
+      if (socket === this.player1) {
         this.rtc.player1Voice = data.enabled;
-      } 
-      else if(socket === this.player2)
-       {
+      } else if (socket === this.player2) {
         this.rtc.player2Voice = data.enabled;
       }
     }
   }
 
   handleCameraToggle(socket, data) {
-    if (this.ended) return;
+    if (this.ended) {console.log("Game has ended."); 
+      return};
     const opponent = socket === this.player1 ? this.player2 : this.player1;
+    console.log("Camera toggle data:", data);
     try {
-      opponent.send(JSON.stringify({ type: "camera_toggle", enabled: data.enabled }));
+      opponent.send(
+        JSON.stringify({ type: "camera_toggle", enabled: data.enabled }),
+      );
+      console.log("Camera toggle sent to opponent");
     } catch {
+      console.error("opponent socket is closed or not available");
       return;
     }
-    if(this.rtc.videoAvailable) {
-      if(socket === this.player1) {
+    console.log("videoAvailable:", this.rtc.videoAvailable);
+    if (this.rtc.videoAvailable) {
+      if (socket === this.player1) {
         this.rtc.player1Video = data.enabled;
-      } 
-      else if(socket === this.player2)
-       {
+      } else if (socket === this.player2) {
         this.rtc.player2Video = data.enabled;
       }
     }

@@ -70,78 +70,77 @@ export class GameManager {
         game.sendChat(socket, message.message);
       }
 
-      if (message.type === "voice_request") {//done
+      if (message.type === "voice_request") {
+        //done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleVoiceRequest(socket);
       }
-      if(message.type === "voice_response") {//done
+      if (message.type === "voice_response") {
+        //done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
-        game.handleVoiceResponse(socket, message.data);
+        game.handleVoiceResponse(socket, message);
       }
-      if(message.type === "video_request") {//done
+      if (message.type === "video_request") {
+        //done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleVideoRequest(socket);
       }
-      if(message.type === "video_response") {//done
+      if (message.type === "video_response") {
+        //done
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
-        game.handleVideoResponse(socket, message.data);
+        game.handleVideoResponse(socket, message);
       }
-      if(message.type === "rtc_offer") {
+      if (message.type === "rtc_offer") {
+        console.log('Received RTC offer message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleRTCOffer(socket, message);
       }
-      if(message.type === "rtc_answer") {
+      if (message.type === "rtc_answer") {
+        console.log('Received RTC answer message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
         game.handleRTCAnswer(socket, message);
       }
-      if(message.type === "mic_toggle") {
+      if (message.type === "mic_toggle") {
+        console.log('Received mic toggle message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
         if (!game) return;
-        game.handleMicToggle(socket, message.data);
+        game.handleMicToggle(socket, message);
       }
-      if(message.type === "camera_toggle") {
+      if (message.type === "camera_toggle") {
+        console.log('Received camera toggle message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
-        if (!game) return;
-        game.handleCameraToggle(socket, message.data);
+        if (!game) {console.log("Game not found for camera toggle"); return};
+        game.handleCameraToggle(socket, message);
       }
       if (message.type === "rtc_ice") {
-        const game = this.findGame(socket);
-        if (!game) return;
+        const game = this.games.find(
+          (game) => game.player1 === socket || game.player2 === socket,
+        );
+        if (!game) {console.log("Game not found for RTC ICE"); return};
         game.handleRtcIce(socket, message);
       }
-      if(message.type==="mic_toggle") {
-        const game = this.findGame(socket);
-        if(!game) return;
-        game.handleMicToggle(socket, message.data);
-      }
-      if(message.type==="camera_toggle") {
-        const game = this.findGame(socket);
-        if(!game) return;
-        game.handleCameraToggle(socket, message.data);
-      }
-      
     });
   }
 }
