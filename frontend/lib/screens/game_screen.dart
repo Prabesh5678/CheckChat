@@ -5,6 +5,8 @@ import '../services/game_service.dart';
 import '../widgets/promotion_dialog.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input_bar.dart';
+import '../widgets/rtc_controls.dart';
+import '../widgets/video_view.dart';
 
 const List<String> kFiles = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const List<String> kRanks = ['8', '7', '6', '5', '4', '3', '2', '1'];
@@ -34,6 +36,11 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late final GameService game;
 
+  // Guards against re-showing the incoming voice/video AlertDialog every
+  // time notifyListeners() fires while it's already open on screen.
+  bool _voiceDialogOpen = false;
+  bool _videoDialogOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,7 +49,79 @@ class _GameScreenState extends State<GameScreen> {
     game.connect();
   }
 
-  void _onUpdate() => setState(() {});
+  void _onUpdate() {
+    setState(() {});
+    _maybeShowIncomingRtcDialogs();
+  }
+
+  void _maybeShowIncomingRtcDialogs() {
+    if (game.incomingVoiceRequest && !_voiceDialogOpen) {
+      _voiceDialogOpen = true;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _showVoiceRequestDialog());
+    }
+    if (game.incomingVideoRequest && !_videoDialogOpen) {
+      _videoDialogOpen = true;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _showVideoRequestDialog());
+    }
+  }
+
+  Future<void> _showVoiceRequestDialog() async {
+    if (!mounted) {
+      _voiceDialogOpen = false;
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Voice chat'),
+        content: const Text('Your opponent wants to start voice chat.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('DECLINE'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ACCEPT'),
+          ),
+        ],
+      ),
+    );
+    _voiceDialogOpen = false;
+    if (!mounted) return;
+    await game.respondToVoiceRequest(accepted ?? false);
+  }
+
+  Future<void> _showVideoRequestDialog() async {
+    if (!mounted) {
+      _videoDialogOpen = false;
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Video chat'),
+        content: const Text('Your opponent wants to start video chat.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('DECLINE'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ACCEPT'),
+          ),
+        ],
+      ),
+    );
+    _videoDialogOpen = false;
+    if (!mounted) return;
+    await game.respondToVideoRequest(accepted ?? false);
+  }
 
   @override
   void dispose() {
@@ -192,6 +271,15 @@ class _GameScreenState extends State<GameScreen> {
                     ],
                   ],
                 ),
+
+                // Video views — no-op (SizedBox.shrink) until video is
+                // accepted, so it's safe to always mount this here.
+                VideoView(game: game),
+
+                // Voice/video request + mic/camera/speaker toggle row —
+                // no-op (SizedBox.shrink) until there's anything to show.
+                RtcControls(game: game),
+
                 const SizedBox(height: 24),
 
                 Wrap(

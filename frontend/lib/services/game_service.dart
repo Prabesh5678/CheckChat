@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:chess/chess.dart' as chess_lib;
+
+import 'webrtc_service.dart';
 
 // Same WS_URL pattern as your React app — swap for production URL
 const String wsUrl = String.fromEnvironment(
@@ -24,6 +28,10 @@ class GameService extends ChangeNotifier {
   WebSocketChannel? _channel;
   final chess_lib.Chess board = chess_lib.Chess();
 
+  GameService() {
+    webrtcService = _newWebrtcService();
+  }
+
   GameStatus status = GameStatus.connecting;
   String? color; // "white" | "black"
   String? winner;
@@ -39,6 +47,52 @@ class GameService extends ChangeNotifier {
   String? lastMoveTo;
 
   final List<ChatMessage> messages = [];
+
+  // ── RTC (voice/video) state ──
+  //
+  // `webrtcService` is swapped out for a brand new instance every time a
+  // session ends (game over / opponent disconnect / rematch), because
+  // WebRTCService.teardown() calls the underlying ChangeNotifier.dispose(),
+  // which is one-way — the old instance can never be reused. GameService
+  // itself outlives many game sessions (e.g. across "Play Again"), so it
+  // always holds a live, ready-to-use WebRTCService.
+  late WebRTCService webrtcService;
+
+  WebRTCService _newWebrtcService() {
+    return WebRTCService(
+      sendMessage: (type, data) => _send({'type': type, ...data}),
+    );
+  }
+
+  bool voiceAccepted = false;
+  bool videoAccepted = false;
+  bool incomingVoiceRequest = false;
+  bool incomingVideoRequest = false;
+
+  // Whether *we* sent the request — this is how we know, when the
+  // corresponding *_response arrives accepted, that we're the offerer.
+  bool _sentVoiceRequest = false;
+  bool _sentVideoRequest = false;
+  bool get sentVoiceRequest => _sentVoiceRequest;
+  bool get sentVideoRequest => _sentVideoRequest;
+
+  // Opponent's reported mic/camera state (pure UI signal — a disabled
+  // sender-side track already stops delivering media, so we don't need to
+  // touch our copy of the remote track for this; it just drives icons and
+  // the "camera off" placeholder in VideoView).
+  bool opponentMicOn = true;
+  bool opponentCameraOn = true;
+
+  // Local mic/camera enabled state lives on webrtcService (it's the thing
+  // actually flipping track.enabled); these are thin passthrough getters so
+  // widgets only need to read `game.micOn` / `game.cameraOn`.
+  bool get micOn => webrtcService.micEnabled;
+  bool get cameraOn => webrtcService.cameraEnabled;
+
+  // Speaker routing is device-local only — there's no speaker_toggle
+  // message type, the opponent never needs to know about it.
+  bool _speakerOn = true;
+  bool get speakerOn => _speakerOn;
 
   // returns true if the side-to-move is in check
   bool get inCheck => board.in_check;
@@ -81,11 +135,13 @@ class GameService extends ChangeNotifier {
       _onMessage,
       onError: (_) {
         status = GameStatus.error;
+        _teardownRtc();
         notifyListeners();
       },
       onDone: () {
         if (status != GameStatus.gameOver) {
           status = GameStatus.disconnected;
+          _teardownRtc();
           notifyListeners();
         }
       },
@@ -114,6 +170,9 @@ class GameService extends ChangeNotifier {
         lastMoveTo = null;
         messages.clear();
         status = GameStatus.playing;
+        // A fresh pairing means any RTC session from a previous match (if
+        // any) is definitely stale — make sure we start clean.
+        _resetRtcFlags();
         notifyListeners();
         break;
 
@@ -137,6 +196,7 @@ class GameService extends ChangeNotifier {
         winner = msg['result']['winner'];
         gameOverReason = msg['result']['reason'];
         status = GameStatus.gameOver;
+        _teardownRtc();
         notifyListeners();
         break;
 
@@ -144,6 +204,7 @@ class GameService extends ChangeNotifier {
         winner = color;
         gameOverReason = 'opponent_disconnected';
         status = GameStatus.gameOver;
+        _teardownRtc();
         notifyListeners();
         break;
 
@@ -151,7 +212,202 @@ class GameService extends ChangeNotifier {
         messages.add(ChatMessage(msg['from'], msg['message']));
         notifyListeners();
         break;
+
+      // ── voice / video signaling ──
+
+      case 'voice_request':
+        incomingVoiceRequest = true;
+        notifyListeners();
+        break;
+
+      case 'voice_response':
+        unawaited(_handleVoiceResponse(msg));
+        break;
+
+      case 'video_request':
+        incomingVideoRequest = true;
+        notifyListeners();
+        break;
+
+      case 'video_response':
+        unawaited(_handleVideoResponse(msg));
+        break;
+
+      case 'rtc_offer':
+        unawaited(
+          webrtcService.handleRemoteOffer(
+            Map<String, dynamic>.from(msg['sdp']),
+          ),
+        );
+        break;
+
+      case 'rtc_answer':
+        unawaited(
+          webrtcService.handleRemoteAnswer(
+            Map<String, dynamic>.from(msg['sdp']),
+          ),
+        );
+        break;
+
+      case 'rtc_ice':
+        unawaited(
+          webrtcService.handleRemoteIceCandidate(
+            Map<String, dynamic>.from(msg['candidate']),
+          ),
+        );
+        break;
+
+      case 'mic_toggle':
+        opponentMicOn = msg['enabled'] == true;
+        notifyListeners();
+        break;
+
+      case 'camera_toggle':
+        opponentCameraOn = msg['enabled'] == true;
+        notifyListeners();
+        break;
     }
+  }
+
+  // ── voice / video: outgoing requests ──
+
+  void requestVoice() {
+    if (_sentVoiceRequest || voiceAccepted) return;
+    _sentVoiceRequest = true;
+    _send({'type': 'voice_request'});
+    notifyListeners();
+  }
+
+  void requestVideo() {
+    if (_sentVideoRequest || videoAccepted) return;
+    _sentVideoRequest = true;
+    _send({'type': 'video_request'});
+    notifyListeners();
+  }
+
+  // ── voice / video: responding to an incoming request ──
+
+  Future<void> respondToVoiceRequest(bool accepted) async {
+    incomingVoiceRequest = false;
+    _send({'type': 'voice_response', 'accepted': accepted});
+    if (accepted) {
+      voiceAccepted = true;
+      // We're the answerer for this round — get our mic ready and then
+      // just wait for the requester's rtc_offer.
+      notifyListeners();
+      await webrtcService.startLocalMedia(withVideo: false);
+    }
+    notifyListeners();
+  }
+
+  Future<void> respondToVideoRequest(bool accepted) async {
+    incomingVideoRequest = false;
+    _send({'type': 'video_response', 'accepted': accepted});
+    if (accepted) {
+      videoAccepted = true;
+      voiceAccepted = true; // video implies audio — see class-level note
+      notifyListeners();
+      await webrtcService.startLocalMedia(withVideo: true);
+    }
+    notifyListeners();
+  }
+
+  // ── voice / video: handling the response to OUR request ──
+
+  Future<void> _handleVoiceResponse(Map<String, dynamic> msg) async {
+    final accepted = msg['accepted'] == true;
+    final wasRequester = _sentVoiceRequest;
+    _sentVoiceRequest = false;
+
+    if (!accepted) {
+      voiceAccepted = false;
+      notifyListeners();
+      return;
+    }
+
+    voiceAccepted = true;
+    if (wasRequester) {
+      // voice_response only reaches the original requester (backend
+      // forwards B's answer to A) — so if we sent the request, we're A,
+      // and we become the offerer now that B has accepted.
+      await webrtcService.startLocalMedia(withVideo: false);
+      await webrtcService.createAndSendOffer();
+    }
+    notifyListeners();
+  }
+
+  Future<void> _handleVideoResponse(Map<String, dynamic> msg) async {
+    final accepted = msg['accepted'] == true;
+    final wasRequester = _sentVideoRequest;
+    _sentVideoRequest = false;
+
+    if (!accepted) {
+      notifyListeners();
+      return;
+    }
+
+    videoAccepted = true;
+    voiceAccepted = true;
+    // Rebuild immediately so the button leaves `Requested…` even while
+    // local media / offer setup is still in progress.
+    notifyListeners();
+    if (wasRequester) {
+      await webrtcService.startLocalMedia(withVideo: true);
+      // If voice was already active, the peer connection already exists
+      // and this addTrack requires renegotiation — createAndSendOffer()
+      // handles that the same way whether it's the first offer ever or a
+      // renegotiation on top of an existing connection.
+      await webrtcService.createAndSendOffer();
+    }
+    notifyListeners();
+  }
+
+  // ── voice / video: local toggles ──
+
+  void toggleMic() {
+    final newState = !webrtcService.micEnabled;
+    webrtcService.setMicEnabled(newState);
+    _send({'type': 'mic_toggle', 'enabled': newState});
+    notifyListeners();
+  }
+
+  void toggleCamera() {
+    final newState = !webrtcService.cameraEnabled;
+    webrtcService.setCameraEnabled(newState);
+    _send({'type': 'camera_toggle', 'enabled': newState});
+    notifyListeners();
+  }
+
+  void toggleSpeaker() {
+    _speakerOn = !_speakerOn;
+    // Helper.setSpeakerphoneOn is a mobile-only audio routing API; on web
+    // the browser/OS handles output routing itself.
+    if (!kIsWeb) {
+      Helper.setSpeakerphoneOn(_speakerOn);
+    }
+    notifyListeners();
+  }
+
+  void _resetRtcFlags() {
+    voiceAccepted = false;
+    videoAccepted = false;
+    incomingVoiceRequest = false;
+    incomingVideoRequest = false;
+    _sentVoiceRequest = false;
+    _sentVideoRequest = false;
+    opponentMicOn = true;
+    opponentCameraOn = true;
+  }
+
+  /// Tears down the current RTC session (per design rule: destroy the peer
+  /// connection when the game ends or the opponent disconnects) and swaps
+  /// in a fresh WebRTCService so GameService is immediately ready for a
+  /// possible next game (rematch).
+  void _teardownRtc() {
+    _resetRtcFlags();
+    final old = webrtcService;
+    webrtcService = _newWebrtcService();
+    unawaited(old.teardown());
   }
 
   // ── moves ──
@@ -300,6 +556,9 @@ class GameService extends ChangeNotifier {
   // ── rematch ──
 
   void playAgain() {
+    // New init_game can pair us with a different opponent entirely, so any
+    // in-progress RTC session must not carry over.
+    _teardownRtc();
     board.reset();
     winner = null;
     gameOverReason = null;
@@ -320,6 +579,7 @@ class GameService extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(webrtcService.teardown());
     _channel?.sink.close();
     super.dispose();
   }
