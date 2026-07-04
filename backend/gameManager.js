@@ -159,6 +159,19 @@ export class GameManager {
         }
         game.handleRtcIce(socket, message);
       }
+      if (message.type === "resign") {
+        const game = this.games.find(
+          (game) => game.player1 === socket || game.player2 === socket,
+        );
+        if (!game) return;
+        game.handleResign(socket);
+      }
+
+      if (message.type === "cancel_wait") {
+        if (this.pendingUser === socket) {
+          this.pendingUser = null;
+        }
+      }
     });
   }
 }

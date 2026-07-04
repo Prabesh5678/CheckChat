@@ -230,8 +230,10 @@ export class Game {
   }
 
   handleCameraToggle(socket, data) {
-    if (this.ended) {console.log("Game has ended."); 
-      return};
+    if (this.ended) {
+      console.log("Game has ended.");
+      return;
+    }
     const opponent = socket === this.player1 ? this.player2 : this.player1;
     console.log("Camera toggle data:", data);
     try {
@@ -251,5 +253,22 @@ export class Game {
         this.rtc.player2Video = data.enabled;
       }
     }
+  }
+  handleResign(socket) {
+    if (this.ended) return;
+    this.ended = true;
+    const winner = socket === this.player1 ? "black" : "white";
+    this.player1.send(
+      JSON.stringify({
+        type: "game_over",
+        result: { winner, reason: "resign" },
+      }),
+    );
+    this.player2.send(
+      JSON.stringify({
+        type: "game_over",
+        result: { winner, reason: "resign" },
+      }),
+    );
   }
 }
