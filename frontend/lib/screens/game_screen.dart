@@ -152,6 +152,11 @@ class _GameScreenState extends State<GameScreen> {
     if (game.gameOverReason == 'opponent_disconnected') {
       return 'Opponent left — You win!';
     }
+    if (game.gameOverReason == 'resign') {
+      return game.winner == game.color
+          ? 'Opponent resigned — You win!'
+          : 'You resigned';
+    }
     if (game.winner == 'draw') {
       const reasons = {
         'stalemate': 'Draw — Stalemate',
@@ -205,6 +210,41 @@ class _GameScreenState extends State<GameScreen> {
     if (t == chess_lib.PieceType.BISHOP) return 'b';
     if (t == chess_lib.PieceType.KNIGHT) return 'n';
     return 'p'; // PAWN
+  }
+
+  void _showResignDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF18181B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+        title: const Text(
+          'Resign?',
+          style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 1),
+        ),
+        content: Text(
+          'Are you sure you want to resign?',
+          style: TextStyle(color: Colors.grey[400], fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('CANCEL',
+                style: TextStyle(
+                    color: Colors.grey[600], fontSize: 11, letterSpacing: 1)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              game.resign();
+            },
+            child: const Text('RESIGN',
+                style: TextStyle(
+                    color: Colors.redAccent, fontSize: 11, letterSpacing: 1)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -269,8 +309,28 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ),
                     ],
-                  ],
+                    // resign flag — always visible while playing, no scroll needed
+                    if (game.status == GameStatus.playing) ...[
+                      const SizedBox(width: 12),
+                      Tooltip(
+                      message: 'Resign',
+                      child: IconButton(
+                      onPressed: () => _showResignDialog(context),
+                      icon: Icon(
+                        Icons.flag_outlined,
+                        size: 16,
+                        color: Colors.red[400],
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      splashRadius: 18,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
+                 ],
                 ),
+                
 
                 // Video views — no-op (SizedBox.shrink) until video is
                 // accepted, so it's safe to always mount this here.
@@ -297,23 +357,51 @@ class _GameScreenState extends State<GameScreen> {
                                 ? MediaQuery.of(context).size.width - 24
                                 : 400.0;
                             final size = w.clamp(220.0, 400.0);
-                            return Container(
-                              width: size,
-                              height: size,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF18181B),
-                                border:
-                                    Border.all(color: const Color(0xFF27272A)),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  _statusLabel().toUpperCase(),
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      letterSpacing: 2,
-                                      color: Colors.grey[600]),
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: size,
+                                  height: size,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF18181B),
+                                    border: Border.all(
+                                        color: const Color(0xFF27272A)),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      _statusLabel().toUpperCase(),
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          letterSpacing: 2,
+                                          color: Colors.grey[600]),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                if (game.status == GameStatus.waiting) ...[
+                                  const SizedBox(height: 16),
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      game.cancelWaiting();
+                                      Navigator.pushReplacementNamed(
+                                          context, '/');
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.grey[400],
+                                      side:
+                                          BorderSide(color: Colors.grey[700]!),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(0)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 20, vertical: 12),
+                                    ),
+                                    child: const Text('CANCEL',
+                                        style: TextStyle(
+                                            fontSize: 11, letterSpacing: 2)),
+                                  ),
+                                ],
+                              ],
                             );
                           })
                         else

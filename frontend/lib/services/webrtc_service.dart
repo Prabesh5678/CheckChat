@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:async' show unawaited;
+import 'package:flutter/widgets.dart';
 
 /// Manages the single RTCPeerConnection for the lifetime of a game session.
 ///
 /// This service knows nothing about WebSockets directly — it is handed a
-/// [sendMessage] callback by GameService so it can push rtc_offer / rtc_answer
+/// [_safeSend] callback by GameService so it can push rtc_offer / rtc_answer
 /// / rtc_ice payloads out over the existing socket without creating a
 /// circular import between game_service.dart and webrtc_service.dart.
 ///
@@ -34,6 +37,21 @@ class WebRTCService extends ChangeNotifier {
   /// Sends a signaling message over the existing game WebSocket.
   /// Signature matches GameService's internal `_send(type, data)` helper.
   final void Function(String type, Map<String, dynamic> data) sendMessage;
+    bool _sendDisabled = false;
+
+      void disableSend() {
+    _sendDisabled = true;
+    _log('send disabled — stale callbacks will be dropped');
+  }
+
+  void _safeSend(String type, Map<String, dynamic> data) {
+    if (_sendDisabled) {
+      _log('dropping stale outgoing message: $type');
+      return;
+    }
+    sendMessage(type, data);
+  }
+
 
   static String get _platformTag =>
       kIsWeb ? 'web' : defaultTargetPlatform.toString().split('.').last;
@@ -68,27 +86,28 @@ class WebRTCService extends ChangeNotifier {
   MediaStream? get localStream => _localStream;
   MediaStream? get remoteStream => _remoteStream;
 
-  static const Map<String, dynamic> _iceServersConfig = {
+  static final Map<String, dynamic> _iceServersConfig = {
     'iceServers': [
       {
-        'urls': ['stun:stun.l.google.com:19302'],
+        'urls': [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+        ],
       },
-      // Free TURN server for TESTING ONLY (openrelay.metered.ca) — this is
-      // rate-limited and not meant for production traffic, but it's enough
-      // to confirm whether missing TURN is why connections are flaky for
-      // you. Swap for your own coturn deployment or a paid provider
-      // (Twilio, Metered, Xirsys) before shipping.
       {
         'urls': [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turn:relay.metered.ca:80',
+          'turn:relay.metered.ca:443',
+          'turn:relay.metered.ca:443?transport=tcp',
+          'turns:relay.metered.ca:443',
         ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
+        'username': dotenv.env['TURN_USER'] ?? '',
+        'credential': dotenv.env['TURN_PASS'] ?? '',
       },
     ],
+    'iceCandidatePoolSize': 10,
   };
+
 
   Future<void> _ensureRenderers() async {
     if (_renderersReady) {
@@ -122,7 +141,7 @@ class WebRTCService extends ChangeNotifier {
         '(mid=${candidate.sdpMid}, mLineIndex=${candidate.sdpMLineIndex}) '
         '— sending rtc_ice',
       );
-      sendMessage('rtc_ice', {
+      _safeSend('rtc_ice', {
         'candidate': {
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
@@ -140,7 +159,9 @@ class WebRTCService extends ChangeNotifier {
         _remoteStream = event.streams[0];
         remoteRenderer.srcObject = _remoteStream;
         _applySpeakerState();
-        notifyListeners();
+         WidgetsBinding.instance.addPostFrameCallback((_) {
+          notifyListeners();
+        });
       }
     };
 
@@ -171,6 +192,12 @@ class WebRTCService extends ChangeNotifier {
 
     _pc!.onRenegotiationNeeded = () {
       _log('onRenegotiationNeeded fired');
+      if (_remoteDescriptionSet && _pc != null) {
+        _log('renegotiating — sending new offer');
+        unawaited(createAndSendOffer());
+      } else {
+        _log('ignoring — initial setup not complete yet');
+      }
     };
   }
 
@@ -281,7 +308,7 @@ class WebRTCService extends ChangeNotifier {
     _log('offer created (type=${offer.type}, sdp length=${offer.sdp?.length})');
     await _pc!.setLocalDescription(offer);
     _log('local description (offer) set — sending rtc_offer');
-    sendMessage('rtc_offer', {
+    _safeSend('rtc_offer', {
       'sdp': {'sdp': offer.sdp, 'type': offer.type},
     });
   }
@@ -302,7 +329,7 @@ class WebRTCService extends ChangeNotifier {
     );
     await _pc!.setLocalDescription(answer);
     _log('local description (answer) set — sending rtc_answer');
-    sendMessage('rtc_answer', {
+    _safeSend('rtc_answer', {
       'sdp': {'sdp': answer.sdp, 'type': answer.type},
     });
   }

@@ -13,6 +13,7 @@ dependencies:
   chess: ^0.8.1          # dart port of chess.js — move validation, legal moves, game state
   cupertino_icons: ^1.0.6
   flutter_webrtc: ^1.5.2
+  flutter_dotenv: ^6.0.1
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +22,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
