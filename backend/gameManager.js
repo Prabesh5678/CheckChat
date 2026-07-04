@@ -37,6 +37,17 @@ export class GameManager {
         return;
       }
 
+      if (
+        message.type === "rtc_offer" ||
+        message.type === "rtc_answer" ||
+        message.type === "rtc_ice"
+      ) {
+        console.log("[RTC][GameManager] incoming", message.type, {
+          hasSdp: !!message.sdp,
+          hasCandidate: !!message.candidate,
+        });
+      }
+
       if (message.type === "init_game") {
         const existingIndex = this.games.findIndex(
           (game) => game.player1 === socket || game.player2 === socket,
@@ -103,19 +114,23 @@ export class GameManager {
         game.handleVideoResponse(socket, message);
       }
       if (message.type === "rtc_offer") {
-        console.log('Received RTC offer message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
-        if (!game) return;
+        if (!game) {
+          console.log("[RTC][GameManager] no game found for rtc_offer");
+          return;
+        }
         game.handleRTCOffer(socket, message);
       }
       if (message.type === "rtc_answer") {
-        console.log('Received RTC answer message');
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
-        if (!game) return;
+        if (!game) {
+          console.log("[RTC][GameManager] no game found for rtc_answer");
+          return;
+        }
         game.handleRTCAnswer(socket, message);
       }
       if (message.type === "mic_toggle") {
@@ -123,7 +138,7 @@ export class GameManager {
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
-        if (!game) return;
+        if (!game) {console.log("Game not found for mic toggle"); return};
         game.handleMicToggle(socket, message);
       }
       if (message.type === "camera_toggle") {
@@ -138,7 +153,10 @@ export class GameManager {
         const game = this.games.find(
           (game) => game.player1 === socket || game.player2 === socket,
         );
-        if (!game) {console.log("Game not found for RTC ICE"); return};
+        if (!game) {
+          console.log("[RTC][GameManager] no game found for rtc_ice");
+          return;
+        }
         game.handleRtcIce(socket, message);
       }
     });
