@@ -4,14 +4,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:chess/chess.dart' as chess_lib;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'webrtc_service.dart';
 
+final wsUrl = dotenv.env['WS_URL']!;
 // Same WS_URL pattern as your React app — swap for production URL
-const String wsUrl = String.fromEnvironment(
-  'WS_URL',
-  defaultValue: 'ws://localhost:8080',
-);
+// const String wsUrl = String.fromEnvironment(
+//   'WS_URL',
+//   defaultValue: 'wss://checkchat.azurewebsites.net',
+// );
 
 enum GameStatus { connecting, waiting, playing, gameOver, error, disconnected }
 
