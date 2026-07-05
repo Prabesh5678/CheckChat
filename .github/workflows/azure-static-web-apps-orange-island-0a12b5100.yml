@@ -61,3 +61,39 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ORANGE_ISLAND_0A12B5100 }}
           action: close
+
+  build_android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create .env
+        working-directory: frontend
+        run: |
+          cat > .env << EOF
+          API_URL=${{ secrets.API_URL }}
+          WS_URL=${{ secrets.WS_URL }}
+          STUN_URL=${{ secrets.STUN_URL }}
+          TURN_URL=${{ secrets.TURN_URL }}
+          TURN_USERNAME=${{ secrets.TURN_USERNAME }}
+          TURN_PASSWORD=${{ secrets.TURN_PASSWORD }}
+          EOF
+
+      - name: Flutter Pub Get
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: frontend
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
