@@ -49,6 +49,26 @@ class LandingScreen extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => Navigator.pushNamed(context, '/store'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.grey[400],
+                side: BorderSide(color: Colors.grey[700]!),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(0)),
+              ),
+              child: const Text(
+                'COIN STORE',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                  fontSize: 13,
+                ),
+              ),
+            ),
           ],
         ),
       ),

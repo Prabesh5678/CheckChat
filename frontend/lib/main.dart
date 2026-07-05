@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/landing_screen.dart';
 import 'screens/game_screen.dart';
+import 'screens/coin_store_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
@@ -27,6 +28,7 @@ class ChessApp extends StatelessWidget {
       routes: {
         '/': (context) => const LandingScreen(),
         '/game': (context) => const GameScreen(),
+        '/store': (context) => const CoinStoreScreen(),
       },
     );
   }
