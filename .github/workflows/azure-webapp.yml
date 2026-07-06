@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'backend-node/**'
+      - '.github/workflows/azure-webapp.yml'
 
 jobs:
   deploy:
@@ -11,7 +14,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend-node
 
     steps:
       - uses: actions/checkout@v4
@@ -27,4 +30,4 @@ jobs:
         with:
           app-name: checkchat
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ./backend
+          package: ./backend-node
