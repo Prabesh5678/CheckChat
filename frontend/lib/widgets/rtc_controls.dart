@@ -114,7 +114,7 @@ class _ActionIcon extends StatelessWidget {
         onTap: onTap,
         child: CircleAvatar(
           radius: 20,
-          backgroundColor: color.withOpacity(0.15),
+          backgroundColor: color.withValues(alpha: 0.15),
           child: Icon(icon, color: color, size: 20),
         ),
       ),
