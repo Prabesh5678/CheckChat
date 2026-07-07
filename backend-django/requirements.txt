@@ -1,0 +1,7 @@
+Django>=5.0,<6.0
+channels>=4.1
+daphne>=4.1
+django-cors-headers>=4.4
+requests>=2.32
+chess>=1.11
+python-dotenv>=1.0
