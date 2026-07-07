@@ -361,30 +361,34 @@ class GameService extends ChangeNotifier {
   Future<void> respondToVoiceRequest(bool accepted) async {
     _log('respondToVoiceRequest(accepted: $accepted)');
     incomingVoiceRequest = false;
-    _send({'type': 'voice_response', 'accepted': accepted});
+
     if (accepted) {
       voiceAccepted = true;
-      // We're the answerer for this round — get our mic ready and then
-      // just wait for the requester's rtc_offer.
       notifyListeners();
-      _log('answerer role: starting local audio media, then waiting for '
-          'rtc_offer');
+      // start media FIRST
       await webrtcService.startLocalMedia(withVideo: false);
+      // THEN send response
+      _send({'type': 'voice_response', 'accepted': true});
+    } else {
+      _send({'type': 'voice_response', 'accepted': false});
     }
     notifyListeners();
   }
 
-  Future<void> respondToVideoRequest(bool accepted) async {
+Future<void> respondToVideoRequest(bool accepted) async {
     _log('respondToVideoRequest(accepted: $accepted)');
     incomingVideoRequest = false;
-    _send({'type': 'video_response', 'accepted': accepted});
+
     if (accepted) {
       videoAccepted = true;
-      voiceAccepted = true; // video implies audio — see class-level note
+      voiceAccepted = true;
       notifyListeners();
-      _log('answerer role: starting local audio+video media, then waiting '
-          'for rtc_offer');
+      // start media FIRST — tracks must be in PC before offer arrives
       await webrtcService.startLocalMedia(withVideo: true);
+      // THEN send response — A can't send offer until it receives this
+      _send({'type': 'video_response', 'accepted': true});
+    } else {
+      _send({'type': 'video_response', 'accepted': false});
     }
     notifyListeners();
   }
