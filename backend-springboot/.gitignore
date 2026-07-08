@@ -1,0 +1,16 @@
+# Maven build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Env / secrets — commit .env.example instead
+.env
+
+# OS
+.DS_Store
